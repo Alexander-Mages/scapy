@@ -36,7 +36,6 @@ from scapy.plist import (
 from scapy.error import log_runtime, log_interactive, Scapy_Exception
 from scapy.base_classes import Gen, SetGen
 from scapy.modules import six
-from scapy.modules.six.moves import map
 from scapy.sessions import DefaultSession
 from scapy.supersocket import SuperSocket, IterSocket
 
@@ -411,7 +410,7 @@ def send(x,  # type: _PacketIterable
 
     :param x: the packets
     :param inter: time (in s) between two packets (default 0)
-    :param loop: send packet indefinetly (default 0)
+    :param loop: send packet indefinitely (default 0)
     :param count: number of packets to send (default None=1)
     :param verbose: verbose mode (default None=conf.verbose)
     :param realtime: check that a packet was sent before sending the next one
@@ -443,7 +442,7 @@ def sendp(x,  # type: _PacketIterable
 
     :param x: the packets
     :param inter: time (in s) between two packets (default 0)
-    :param loop: send packet indefinetly (default 0)
+    :param loop: send packet indefinitely (default 0)
     :param count: number of packets to send (default None=1)
     :param verbose: verbose mode (default None=conf.verbose)
     :param realtime: check that a packet was sent before sending the next one
@@ -796,6 +795,7 @@ def srploop(pkts,  # type: _PacketIterable
 def sndrcvflood(pks,  # type: SuperSocket
                 pkt,  # type: _PacketIterable
                 inter=0,  # type: int
+                maxretries=None,  # type: Optional[int]
                 verbose=None,  # type: Optional[int]
                 chainCC=False,  # type: bool
                 timeout=None  # type: Optional[int]
@@ -808,7 +808,11 @@ def sndrcvflood(pks,  # type: SuperSocket
         # type: (_PacketIterable, Event) -> Iterator[Packet]
         """Infinite generator that produces the same
         packet until stopevent is triggered."""
+        i = 0
         while True:
+            i += 1
+            if maxretries and i >= maxretries:
+                return
             for p in tobesent:
                 if stopevent.is_set():
                     return

@@ -69,18 +69,17 @@ class Bunch:
 def retry_test(func):
     """Retries the passed function 3 times before failing"""
     success = False
-    ex = Exception("Unknown")
     for _ in six.moves.range(3):
         try:
             result = func()
-        except Exception as e:
+        except Exception:
+            t, v, tb = sys.exc_info()
             time.sleep(1)
-            ex = e
         else:
             success = True
             break
     if not success:
-        raise ex
+        six.reraise(t, v, tb)
     assert success
     return result
 
@@ -519,10 +518,10 @@ def remove_empty_testsets(test_campaign):
 # RUN TEST #
 
 def run_test(test, get_interactive_session, theme, verb=3,
-             ignore_globals=None, my_globals=None):
+             my_globals=None):
     """An internal UTScapy function to run a single test"""
     start_time = time.time()
-    test.output, res = get_interactive_session(test.test.strip(), ignore_globals=ignore_globals, verb=verb, my_globals=my_globals)
+    test.output, res = get_interactive_session(test.test.strip(), verb=verb, my_globals=my_globals)
     test.result = "failed"
     try:
         if res is None or res:
@@ -568,12 +567,13 @@ def import_UTscapy_tools(ses):
 
 def run_campaign(test_campaign, get_interactive_session, theme,
                  drop_to_interpreter=False, verb=3,
-                 ignore_globals=None, scapy_ses=None):
+                 scapy_ses=None):
     passed = failed = 0
     if test_campaign.preexec:
         test_campaign.preexec_output = get_interactive_session(
-            test_campaign.preexec.strip(), ignore_globals=ignore_globals,
-            my_globals=scapy_ses)[0]
+            test_campaign.preexec.strip(),
+            my_globals=scapy_ses
+        )[0]
 
     # Drop
     def drop(scapy_ses):
@@ -676,8 +676,8 @@ def campaign_to_xUNIT(test_campaign):
     output = '<?xml version="1.0" encoding="UTF-8" ?>\n<testsuite>\n'
     for testset in test_campaign:
         for t in testset:
-            output += ' <testcase classname="%s"\n' % testset.name.encode("string_escape").replace('"', ' ')  # noqa: E501
-            output += '           name="%s"\n' % t.name.encode("string_escape").replace('"', ' ')  # noqa: E501
+            output += ' <testcase classname="%s"\n' % testset.name.replace('"', ' ')  # noqa: E501
+            output += '           name="%s"\n' % t.name.replace('"', ' ')  # noqa: E501
             output += '           duration="0">\n' % t
             if not t:
                 output += '<error><![CDATA[%(output)s]]></error>\n' % t
@@ -820,7 +820,7 @@ def campaign_to_LATEX(test_campaign):
 # USAGE #
 
 def usage():
-    print("""Usage: UTscapy [-m module] [-f {text|ansi|HTML|LaTeX|live}] [-o output_file]
+    print("""Usage: UTscapy [-m module] [-f {text|ansi|HTML|LaTeX|xUnit|live}] [-o output_file]
                [-t testfile] [-T testfile] [-k keywords [-k ...]] [-K keywords [-K ...]]
                [-l] [-b] [-d|-D] [-F] [-q[q]] [-i] [-P preexecute_python_code]
                [-c configfile]
@@ -853,7 +853,7 @@ def usage():
 def execute_campaign(TESTFILE, OUTPUTFILE, PREEXEC, NUM, KW_OK, KW_KO, DUMP, DOCS,
                      FORMAT, VERB, ONLYFAILED, CRC, INTERPRETER,
                      autorun_func, theme, pos_begin=0,
-                     ignore_globals=None, scapy_ses=None):  # noqa: E501
+                     scapy_ses=None):  # noqa: E501
     # Parse test file
     try:
         test_campaign = parse_campaign_file(TESTFILE)
@@ -897,7 +897,6 @@ def execute_campaign(TESTFILE, OUTPUTFILE, PREEXEC, NUM, KW_OK, KW_KO, DUMP, DOC
         test_campaign, autorun_func[FORMAT], theme,
         drop_to_interpreter=INTERPRETER,
         verb=VERB,
-        ignore_globals=None,
         scapy_ses=scapy_ses
     )
 
@@ -939,7 +938,6 @@ def main():
     argv = sys.argv[1:]
     logger = logging.getLogger("scapy")
     logger.addHandler(logging.StreamHandler())
-    ignore_globals = list(six.moves.builtins.__dict__)
 
     import scapy
     print(dash + " UTScapy - Scapy %s - %s" % (
@@ -1078,13 +1076,10 @@ def main():
     except AttributeError:
         pass
 
-    if conf.use_pcap:
+    if conf.use_pcap or WINDOWS:
         KW_KO.append("not_libpcap")
         if VERB > 2:
             print(" " + arrow + " libpcap mode")
-    elif WINDOWS and not NON_ROOT:
-        print("ERROR: libpcap is required on Windows for root tests")
-        raise SystemExit
 
     KW_KO.append("disabled")
 
@@ -1147,7 +1142,8 @@ def main():
 
     runned_campaigns = []
 
-    scapy_ses = importlib.import_module(".all", "scapy").__dict__
+    from scapy.main import _scapy_builtins
+    scapy_ses = _scapy_builtins()
     import_UTscapy_tools(scapy_ses)
 
     # Execute all files
@@ -1161,7 +1157,6 @@ def main():
                 FORMAT, VERB, ONLYFAILED, CRC, INTERPRETER,
                 autorun_func, theme,
                 pos_begin=pos_begin,
-                ignore_globals=ignore_globals,
                 scapy_ses=copy.copy(scapy_ses)
             )
         runned_campaigns.append(campaign)
@@ -1210,6 +1205,11 @@ def main():
         if threading.active_count() > 1:
             print("\nWARNING: UNFINISHED THREADS")
             print(threading.enumerate())
+        import multiprocessing
+        processes = multiprocessing.active_children()
+        if processes:
+            print("\nWARNING: UNFINISHED PROCESSES")
+            print(processes)
 
     # Return state
     return glob_result

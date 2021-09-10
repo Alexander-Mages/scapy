@@ -1,5 +1,5 @@
 % Regression tests for the XCP using CANSockets
-~ not_pypy
+~ not_pypy automotive_comm
 # More information at http://www.secdev.org/projects/UTscapy/
 
 ############
@@ -10,13 +10,8 @@
 
 = Imports
 
-import scapy.modules.six as six
-
-if six.PY3:
-    exec(open("test/contrib/automotive/interface_mockup.py").read())
-else:
-    execfile("test/contrib/automotive/interface_mockup.py")
-
+with open(scapy_path("test/contrib/automotive/interface_mockup.py")) as f:
+    exec(f.read())
 
 = Load module
 
